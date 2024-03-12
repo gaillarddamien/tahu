@@ -921,100 +921,83 @@ function decodeDoubleArray(array: Uint8Array | null) {
     }
     return unpackValues(array, 'd');
 }
-  
+
 function unpackValues(packed_bytes: Uint8Array, format_specifier: string): number[] {
-    const data_view = new DataView(packed_bytes.buffer, packed_bytes.byteOffset, packed_bytes.byteLength);
-    const decodeFunc = {
-        'b': data_view.getInt8.bind(data_view),
-        'B': data_view.getUint8.bind(data_view),
-        'h': data_view.getInt16.bind(data_view, 0, true),
-        'H': data_view.getUint16.bind(data_view, 0, true),
-        'i': data_view.getInt32.bind(data_view, 0, true),
-        'I': data_view.getUint32.bind(data_view, 0, true),
-        'f': data_view.getFloat32.bind(data_view, 0, true),
-        'd': data_view.getFloat64.bind(data_view, 0, true),
-    }[format_specifier];
-    if (!decodeFunc) {
-        throw new Error(`Unsupported format specifier: ${format_specifier}`);
+    const buffer = packed_bytes.buffer.slice(packed_bytes.byteOffset, packed_bytes.byteOffset + packed_bytes.byteLength);
+    let typedArray: Int8Array | Uint8Array | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array;
+
+    switch(format_specifier) {
+        case 'b':
+            typedArray = new Int8Array(buffer);
+            break;
+        case 'B':
+            typedArray = new Uint8Array(buffer);
+            break;
+        case 'h':
+            typedArray = new Int16Array(buffer);
+            break;
+        case 'H':
+            typedArray = new Uint16Array(buffer);
+            break;
+        case 'i':
+            typedArray = new Int32Array(buffer);
+            break;
+        case 'I':
+            typedArray = new Uint32Array(buffer);
+            break;
+        case 'f':
+            typedArray = new Float32Array(buffer);
+            break;
+        case 'd':
+            typedArray = new Float64Array(buffer);
+            break;
+        default:
+            throw new Error(`Unsupported format specifier: ${format_specifier}`);
     }
-    const values = [];
-    const typeSize = getTypeSize(format_specifier);
-    for (let i = 0; i < packed_bytes.length / typeSize; i++) {
-        values.push(decodeFunc(i * typeSize));
-    }
-    return values;
+    return Array.from(typedArray);
 }
 
 function packValues(values: any[], format_specifier: string): Uint8Array {
-    const dataView = new DataView(new ArrayBuffer(values.length * getTypeSize(format_specifier)));
-    let byteOffset = 0;
-    for (let i = 0; i < values.length; i++) {
-        const value = values[i];
-        switch (format_specifier) {
-            case 'b':
-                dataView.setInt8(byteOffset, value);
-                byteOffset += 1;
-                break;
-            case 'B':
-                dataView.setUint8(byteOffset, value);
-                byteOffset += 1;
-                break;
-            case 'h':
-                dataView.setInt16(byteOffset, value, true);
-                byteOffset += 2;
-                break;
-            case 'H':
-                dataView.setUint16(byteOffset, value, true);
-                byteOffset += 2;
-                break;
-            case 'i':
-                dataView.setInt32(byteOffset, value, true);
-                byteOffset += 4;
-                break;
-            case 'I':
-                dataView.setUint32(byteOffset, value, true);
-                byteOffset += 4;
-                break;
-            case 'f':
-                dataView.setFloat32(byteOffset, value, true);
-                byteOffset += 4;
-                break;
-            case 'd':
-                dataView.setFloat64(byteOffset, value, true);
-                byteOffset += 8;
-                break;
-            default:
-                throw new Error(`Unsupported format specifier: ${format_specifier}`);
-        }
-    }
-    return new Uint8Array(dataView.buffer);
-}
+    let typedArray: Int8Array | Uint8Array | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array;
 
-function getTypeSize(format_specifier: string): number {
-    const sizeMap: {[key: string]: number} = {
-        'b': 1,
-        'B': 1,
-        'h': 2,
-        'H': 2,
-        'i': 4,
-        'I': 4,
-        'f': 4,
-        'd': 8,
-    };
-    const size = sizeMap[format_specifier];
-    if (!size) {
-        throw new Error(`Unsupported format specifier: ${format_specifier}`);
+    switch (format_specifier) {
+        case 'b':
+            typedArray = new Int8Array(values);
+            break;
+        case 'B':
+            typedArray = new Uint8Array(values);
+            break;
+        case 'h':
+            typedArray = new Int16Array(values);
+            break;
+        case 'H':
+            typedArray = new Uint16Array(values);
+            break;
+        case 'i':
+            typedArray = new Int32Array(values);
+            break;
+        case 'I':
+            typedArray = new Uint32Array(values);
+            break;
+        case 'f':
+            typedArray = new Float32Array(values);
+            break;
+        case 'd':
+            typedArray = new Float64Array(values);
+            break;
+        default:
+            throw new Error(`Unsupported format specifier: ${format_specifier}`);
     }
-    return size;
+    return new Uint8Array(typedArray.buffer);
 }
 
 function encodeBooleanArray(booleanArray: boolean[]): Uint8Array {
-    // calculate the number of packed bytes required
+        // calculate the number of packed bytes required
     const packedBytesCount = Math.ceil(booleanArray.length / 8);
-
+    
     // convert the boolean array into a packed byte array
     const packedBytes = new Uint8Array(packedBytesCount);
-
+    
     for (let i = 0; i < booleanArray.length; i++) {
         const value = booleanArray[i];
         const byteIndex = Math.floor(i / 8);
@@ -1027,12 +1010,12 @@ function encodeBooleanArray(booleanArray: boolean[]): Uint8Array {
     const result = new Uint8Array(lengthBytes.length + packedBytes.length);
     result.set(lengthBytes);
     result.set(packedBytes, lengthBytes.length);
-
+    
     return result;
 }
 
 function decodeBooleanArray(packedBytes: Uint8Array): boolean[] {
-    // extract the length of the boolean array from the first 4 bytes of the packed bytes
+        // extract the length of the boolean array from the first 4 bytes of the packed bytes
     const lengthBytes = packedBytes.slice(0, 4);
     const length = new Uint32Array(lengthBytes.buffer)[0];
 
