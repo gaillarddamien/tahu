@@ -74,10 +74,11 @@ export type TypeStr = "Int8"
     | "FloatArray"
     | "DoubleArray"
     | "BooleanArray"
-    | "StringArray";
+    | "StringArray"
+    | "DateTimeArray";
 
 export interface UMetric extends IMetric {
-    value: null | number | Long.Long | boolean | string | Uint8Array | UDataSet | UTemplate | boolean[] | string[] | number[];
+    value: null | number | Long.Long | boolean | string | Uint8Array | UDataSet | UTemplate | boolean[] | string[] | number[] | bigint[] | Long.Long[];
     type: TypeStr;
     properties?: Record<string, UPropertyValue>
 }
@@ -157,34 +158,17 @@ function setValue (type: number, value: UserValue, object: IMetric | IPropertyVa
             (object as IPropertyValue).propertysetsValue = encodePropertySetList(value as UPropertySetList);
             break;
         case 22:
-            (object as IMetric).bytesValue = encodeInt8Array(value as Array<number>);
-            break;
         case 23:
-            (object as IMetric).bytesValue = encodeInt16Array(value as Array<number>);
-            break;
         case 24:
-            (object as IMetric).bytesValue = encodeInt32Array(value as Array<number>);
-            break;
         case 25:
-            (object as IMetric).bytesValue = encodeInt64Array(value as Array<number>);
-            break;    
         case 26:
-            (object as IMetric).bytesValue = encodeUInt8Array(value as Array<number>);
-            break;
         case 27:
-            (object as IMetric).bytesValue = encodeUInt16Array(value as Array<number>);
-            break;
         case 28:
-            (object as IMetric).bytesValue = encodeUInt32Array(value as Array<number>);
-            break;
         case 29:
-            (object as IMetric).bytesValue = encodeUInt64Array(value as Array<number>);
-            break;
         case 30:
-            (object as IMetric).bytesValue = encodeFloatArray(value as Array<number>);
-            break;
         case 31:
-            (object as IMetric).bytesValue = encodeDoubleArray(value as Array<number>);
+        case 34:
+            (object as IMetric).bytesValue = packValues(value as Array<number | bigint | Long.Long>, NUMERIC_ARRAY_FORMAT[type]);
             break;
         case 32:
             (object as IMetric).bytesValue = encodeBooleanArray(value as Array<boolean>);
@@ -243,25 +227,17 @@ function getValue<T extends UserValue> (type: number | null | undefined, object:
         case 21:
             return decodePropertySetList((object as IPropertyValue).propertysetsValue!) as T;
         case 22:
-            return decodeInt8Array((object as IMetric).bytesValue!) as T;
         case 23:
-            return decodeInt16Array((object as IMetric).bytesValue!) as T;
         case 24:
-            return decodeInt32Array((object as IMetric).bytesValue!) as T;
         case 25:
-            return decodeInt64Array((object as IMetric).bytesValue!) as T;
         case 26:
-            return decodeUInt8Array((object as IMetric).bytesValue!) as T;
         case 27:
-            return decodeUInt16Array((object as IMetric).bytesValue!) as T;
         case 28:
-            return decodeUInt32Array((object as IMetric).bytesValue!) as T;
         case 29:
-            return decodeUInt64Array((object as IMetric).bytesValue!) as T;
         case 30:
-            return decodeFloatArray((object as IMetric).bytesValue!) as T;
         case 31:
-            return decodeDoubleArray((object as IMetric).bytesValue!) as T;
+        case 34:
+            return unpackValues((object as IMetric).bytesValue!, NUMERIC_ARRAY_FORMAT[type]) as T;
         case 32:
             return decodeBooleanArray((object as IMetric).bytesValue!) as T;
         case 33:
@@ -402,13 +378,14 @@ function encodeType(typeString: string): number {
             return 32;
         case "STRINGARRAY":
             return 33;
+        case "DATETIMEARRAY":
+            return 34;
         default:
             return 0;
     }
 }
 
 /** transforms a type code into a user friendly type */
-// @ts-expect-error TODO no consistent return
 function decodeType (typeInt: number | null | undefined): TypeStr {
     switch (typeInt) {
         case 1:
@@ -477,6 +454,10 @@ function decodeType (typeInt: number | null | undefined): TypeStr {
             return "BooleanArray";
         case 33:
             return "StringArray";
+        case 34:
+            return "DateTimeArray";
+        default:
+            throw new Error(`Unknown type code: ${typeInt}`);
     }
 }
 
@@ -841,125 +822,36 @@ function decodeTemplate (protoTemplate: ITemplate): UTemplate {
     return template;
 }
 
-function encodeStringArray(array: Array<string>) {
+/** Maps a Sparkplug numeric array type code to its DataView format specifier */
+const NUMERIC_ARRAY_FORMAT: Record<number, string> = {
+    22: 'b', // Int8Array
+    23: 'h', // Int16Array
+    24: 'i', // Int32Array
+    25: 'l', // Int64Array
+    26: 'B', // UInt8Array
+    27: 'H', // UInt16Array
+    28: 'I', // UInt32Array
+    29: 'L', // UInt64Array
+    30: 'f', // FloatArray
+    31: 'd', // DoubleArray
+    34: 'L', // DateTimeArray (uint64 ms since epoch)
+};
+
+function encodeStringArray(array: string[]): Uint8Array {
+    if (array.length === 0) {
+        return new Uint8Array(0);
+    }
     return Buffer.from(array.join("\0") + '\0', 'utf8');
 }
   
-function decodeStringArray(packedBytes: Uint8Array | null) {
+function decodeStringArray(packedBytes: Uint8Array | null): string[] | null {
     if (packedBytes === null) {
         return null;
     }
+    if (packedBytes.length === 0) {
+        return [];
+    }
     return (Buffer.from(packedBytes).toString('utf8')).replace(/\0$/, '').split('\x00');
-}
-
-function encodeInt8Array(array: any[]) {
-    return packValues(array, 'b');
-}
-
-function decodeInt8Array(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'b');
-}
-
-function encodeUInt8Array(array: any[]) {
-    return packValues(array, 'B');
-}
-
-function decodeUInt8Array(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'B');
-}
-
-function encodeInt16Array(array: any[]) {
-    return packValues(array, 'h');
-}
-
-function decodeInt16Array(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'h');
-}
-
-function encodeUInt16Array(array: any[]) {
-    return packValues(array, 'H');
-}
-
-function decodeUInt16Array(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'H');
-}
-
-function encodeInt32Array(array: any[]) {
-    return packValues(array, 'i');
-}
-
-function decodeInt32Array(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'i');
-}
-
-function encodeUInt32Array(array: any[]) {
-    return packValues(array, 'I');
-}
-
-function decodeUInt32Array(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'I');
-}
-
-function encodeInt64Array(array: any[]) {
-    return packValues(array, 'l');
-}
-
-function decodeInt64Array(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'l');
-}
-
-function encodeUInt64Array(array: any[]) {
-    return packValues(array, 'L');
-}
-
-function decodeUInt64Array(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'L');
-}
-
-function encodeFloatArray(array: any[]) {
-    return packValues(array, 'f');
-}
-
-function decodeFloatArray(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'f');
-}
-
-function encodeDoubleArray(array: any[]) {
-    return packValues(array, 'd');
-}
-
-function decodeDoubleArray(array: Uint8Array | null) {
-    if (array === null) {
-        return null;
-    }
-    return unpackValues(array, 'd');
 }
   
 function unpackValues(packed_bytes: Uint8Array, format_specifier: string): (number | Long)[] {
@@ -1005,41 +897,41 @@ function unpackValues(packed_bytes: Uint8Array, format_specifier: string): (numb
     return values;
 }
 
-function packValues(values: any[], format_specifier: string): Uint8Array {
+function packValues(values: Array<number | bigint | Long.Long>, format_specifier: string): Uint8Array {
     const typeSize = getTypeSize(format_specifier);
     const dataView = new DataView(new ArrayBuffer(values.length * typeSize));
     for (let i = 0, byteOffset = 0; i < values.length; i++, byteOffset += typeSize) {
         const value = values[i];
         switch (format_specifier) {
             case 'b':
-                dataView.setInt8(byteOffset, value);
+                dataView.setInt8(byteOffset, value as number);
                 break;
             case 'B':
-                dataView.setUint8(byteOffset, value);
+                dataView.setUint8(byteOffset, value as number);
                 break;
             case 'h':
-                dataView.setInt16(byteOffset, value, true);
+                dataView.setInt16(byteOffset, value as number, true);
                 break;
             case 'H':
-                dataView.setUint16(byteOffset, value, true);
+                dataView.setUint16(byteOffset, value as number, true);
                 break;
             case 'i':
-                dataView.setInt32(byteOffset, value, true);
+                dataView.setInt32(byteOffset, value as number, true);
                 break;
             case 'I':
-                dataView.setUint32(byteOffset, value, true);
+                dataView.setUint32(byteOffset, value as number, true);
                 break;
             case 'l':
-                dataView.setBigInt64(byteOffset, BigInt(value), true);
+                dataView.setBigInt64(byteOffset, BigInt(value instanceof Long ? value.toString() : value), true);
                 break;
             case 'L':
-                dataView.setBigUint64(byteOffset, BigInt(value), true);
+                dataView.setBigUint64(byteOffset, BigInt(value instanceof Long ? value.toString() : value), true);
                 break;
             case 'f':
-                dataView.setFloat32(byteOffset, value, true);
+                dataView.setFloat32(byteOffset, value as number, true);
                 break;
             case 'd':
-                dataView.setFloat64(byteOffset, value, true);
+                dataView.setFloat64(byteOffset, value as number, true);
                 break;
             default:
                 throw new Error(`Unsupported format specifier: ${format_specifier}`);
